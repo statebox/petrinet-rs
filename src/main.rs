@@ -12,8 +12,8 @@ impl Transition {
     }
 }
 
-impl From<Petrinet> for Execution {
-    fn from(net: Petrinet) -> Self {
+impl<'a> From<&'a Petrinet> for Execution<'a> {
+    fn from(net: &'a Petrinet) -> Self {
         let p = net.place_count();
         let marking: Vec<bool> = [true]
             .iter()
@@ -24,10 +24,10 @@ impl From<Petrinet> for Execution {
     }
 }
 
-#[derive(Clone, Default)]
-struct Execution(Petrinet, Vec<bool>);
+#[derive(Clone, Debug)]
+struct Execution<'a>(&'a Petrinet, Vec<bool>);
 
-impl Execution {
+impl<'a> Execution<'a> {
     fn enabled(&self, t: usize) -> bool {
         let Execution(net, marking) = self;
         match net.transition(t) {
@@ -84,17 +84,17 @@ impl Petrinet {
             .iter()
             .cloned()
             .fold(0, |acc, Transition(consumed, produced)| {
-                let pmax = max(produced);
-                let cmax = max(consumed);
+                let pmax = max(&produced);
+                let cmax = max(&consumed);
                 let m = pmax.max(cmax);
-                acc.max(m).max(1) // require at least one place (which will hold the initial token)
+                acc.max(m.clone()).max(1) // require at least one place (which will hold the initial token)
             })
     }
     fn transitions(&self) -> &Vec<Transition> {
         &self.0
     }
-    fn transition(&self, t: usize) -> Option<Transition> {
-        self.transitions().get(t).cloned()
+    fn transition(&self, t: usize) -> Option<&Transition> {
+        self.transitions().get(t)
     }
 
     /// nr of transitions
@@ -103,32 +103,32 @@ impl Petrinet {
     }
 }
 
-fn max(xs: Vec<u32>) -> u32 {
-    xs.iter().cloned().fold(0, |acc, x| acc.max(x))
+fn max(xs: &Vec<u32>) -> &u32 {
+    xs.iter().fold(&0, |acc, x| acc.max(x))
 }
 
 fn main() {
-    let net = Petrinet::new(
-        [
-            Transition(vec![1], vec![2, 3]),
-            Transition(vec![2], vec![4]),
-            Transition(vec![3], vec![5]),
-            Transition(vec![4, 5], vec![6]),
-        ]
-        .to_vec(),
-    );
-    let e = Execution::from(net);
-    // println!("transition 0 is enabled = {}", e.enabled(0));
-    // println!("transition 1 is enabled = {}", e.enabled(1));
-    // println!("transition 1 is enabled = {}", e.enabled(2));
-    // println!("transition 1 is enabled = {}", e.enabled(3));
+    // let net = Petrinet::new(
+    //     [
+    //         Transition(vec![1], vec![2, 3]),
+    //         Transition(vec![2], vec![4]),
+    //         Transition(vec![3], vec![5]),
+    //         Transition(vec![4, 5], vec![6]),
+    //     ]
+    //     .to_vec(),
+    // );
+    // let e = Execution::from(net);
+    // // println!("transition 0 is enabled = {}", e.enabled(0));
+    // // println!("transition 1 is enabled = {}", e.enabled(1));
+    // // println!("transition 1 is enabled = {}", e.enabled(2));
+    // // println!("transition 1 is enabled = {}", e.enabled(3));
 
-    let e1 = e.fire(0);
-    // println!("transition 0 is enabled = {}", e1.enabled(0));
-    // println!("transition 1 is enabled = {}", e1.enabled(1));
-    // println!("transition 1 is enabled = {}", e1.enabled(2));
-    // println!("transition 1 is enabled = {}", e1.enabled(3));
-    // engine(net);
+    // let e1 = e.fire(0);
+    // // println!("transition 0 is enabled = {}", e1.enabled(0));
+    // // println!("transition 1 is enabled = {}", e1.enabled(1));
+    // // println!("transition 1 is enabled = {}", e1.enabled(2));
+    // // println!("transition 1 is enabled = {}", e1.enabled(3));
+    // // engine(net);
 }
 
 #[cfg(test)]
@@ -145,18 +145,42 @@ mod tests {
             ]
             .to_vec(),
         );
-        let e = Execution::from(net);
+        let e = Execution::from(&net);
         assert_eq!(e.enabled(0), true, "transition 0 must be enabled");
         assert_eq!(e.enabled(1), false, "transition 1 must be disabled");
         assert_eq!(e.enabled(2), false, "transition 2 must be disabled");
         assert_eq!(e.enabled(3), false, "transition 3 must be disabled");
         assert_eq!(e.enabled(4), false, "transition 4 must be disabled");
 
-        let e1 = e.fire(0);
-        assert_eq!(e1.enabled(0), false, "transition 0 must be disabled");
-        assert_eq!(e1.enabled(1), true, "transition 1 must be enabled");
-        assert_eq!(e1.enabled(2), true, "transition 2 must be enabled");
-        assert_eq!(e1.enabled(3), false, "transition 3 must be disabled");
-        assert_eq!(e1.enabled(4), false, "transition 4 must be disabled");
+        let e = e.fire(0);
+        assert_eq!(e.enabled(0), false, "transition 0 must be disabled");
+        assert_eq!(e.enabled(1), true, "transition 1 must be enabled");
+        assert_eq!(e.enabled(2), true, "transition 2 must be enabled");
+        assert_eq!(e.enabled(3), false, "transition 3 must be disabled");
+        assert_eq!(e.enabled(4), false, "transition 4 must be disabled");
+
+
+        let e = e.fire(2);
+        assert_eq!(e.enabled(0), false, "transition 0 must be disabled");
+        assert_eq!(e.enabled(1), true, "transition 1 must be enabled");
+        assert_eq!(e.enabled(2), false, "transition 2 must be enabled");
+        assert_eq!(e.enabled(3), false, "transition 3 must be disabled");
+        assert_eq!(e.enabled(4), false, "transition 4 must be disabled");
+
+
+        let e = e.fire(1);
+        assert_eq!(e.enabled(0), false, "transition 0 must be disabled");
+        assert_eq!(e.enabled(1), false, "transition 1 must be disabled");
+        assert_eq!(e.enabled(2), false, "transition 2 must be disabled");
+        assert_eq!(e.enabled(3), true, "transition 3 must be enabled");
+        assert_eq!(e.enabled(4), false, "transition 4 must be disabled");
+
+
+        let e = e.fire(3);
+        assert_eq!(e.enabled(0), false, "transition 0 must be disabled");
+        assert_eq!(e.enabled(1), false, "transition 1 must be disabled");
+        assert_eq!(e.enabled(2), false, "transition 2 must be disabled");
+        assert_eq!(e.enabled(3), false, "transition 3 must be disabled");
+        assert_eq!(e.enabled(4), false, "transition 4 must be disabled");
     }
 }
