@@ -1,6 +1,6 @@
 use std::iter;
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 struct Transition(Vec<u32>, Vec<u32>);
 
 impl Transition {
@@ -59,21 +59,22 @@ impl<'a> Execution<'a> {
                         let yes_token = true; // net is 1-safe, so place either has or doesn't have a token
                         let no_token = false;
                         match (is_consumed, is_produced) {
-                            (true, true) => yes_token,        // both produce and consumed, so there is a token afterwards
-                            (true, false) => no_token,      // just consumed, so there is _no_ token afterwards
-                            (false, true) => yes_token,       // only produced, so there is a token afterwards
-                            (false, false) => has_token, // not modified by this transition
+                            (true, true) => yes_token,    // both produce and consumed, so there is a token afterwards
+                            (true, false) => no_token,    // just consumed, so there is _no_ token afterwards
+                            (false, true) => yes_token,   // only produced, so there is a token afterwards
+                            (false, false) => has_token,  // not modified by this transition
                         }
                     })
                     .collect();
 
+                // println!("execution: {:?}", new_marking);
                 Execution(net, new_marking)
             }
         }
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 struct Petrinet(Vec<Transition>);
 impl Petrinet {
     fn new(x: Vec<Transition>) -> Self {
@@ -136,6 +137,14 @@ mod tests {
     use super::*;
     #[test]
     fn example_usage() {
+        // transition i represented as (i)
+        // place j represented as j
+        //
+        //                2 - 4
+        //              /  (1)  \
+        //  start -> 1 -(0)   (3)- 6
+        //              \  (2)  /
+        //                3 - 5
         let net = Petrinet::new(
             [
                 Transition(vec![1], vec![2, 3]),
