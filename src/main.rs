@@ -1,8 +1,11 @@
+#[macro_use]
+extern crate serde_derive;
+
 use std::iter;
 
 type Places = Vec<u32>;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, PartialOrd)]
 struct Transition(Places, Places);
 
 impl Transition {
@@ -75,7 +78,7 @@ impl<'a> Execution<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, PartialOrd)]
 struct Petrinet(Vec<Transition>);
 impl Petrinet {
     fn new(x: Vec<Transition>) -> Self {
@@ -108,7 +111,54 @@ fn max(xs: &Places) -> &u32 {
     xs.iter().fold(&0, |acc, x| acc.max(x))
 }
 
+fn read_deserialize_file(filepath: &str) -> Result<Nbpt, std::io::Error> {
+    // TODO: fix error types, not sure how it compiles as there seem to be 2 distinct errrors
+    let f = std::fs::File::open(filepath)?;
+    let deserialized: Nbpt = serde_json::from_reader(f)?;
+    Ok(deserialized)
+}
+#[derive(Serialize, Deserialize, Debug)]
+struct Nbpt {
+    name: String,
+    names: Vec<String>, // name of transitions
+    partition: Partition,
+}
+
+// partitions are separated by zeros and alternate between consume and produce
+// respectively. each produce-consume pair constitutes one transition
+#[derive(Serialize, Deserialize, Debug)]
+struct Partition(Vec<u32>);
+
+impl From<Partition> for Petrinet {
+    fn from(partition: Partition) -> Self {
+        let mut consume = true;
+        let mut c: Places = vec![];
+        let mut p: Places = vec![];
+        let mut tr: Vec<Transition> = vec![];
+        for i in partition.0.into_iter() {
+            match (i, consume) {
+                (0, true) => {
+                    consume = !consume;
+                }
+                (0, false) => {
+                    tr.push(Transition(c, p));
+                    c = vec![];
+                    p = vec![];
+                    consume = !consume;
+                }
+                (_, true) => c.push(i),
+                (_, false) => p.push(i),
+            }
+        }
+        Petrinet(tr)
+    }
+}
+
 fn main() {
+    // let nbpt = read_deserialize_file("./swap-protocol-both.nbpt.json").unwrap();
+    // // println!("nbpt: {:?}", nbpt);
+    // let petrinet = Petrinet::from(nbpt.partition);
+    // println!("{:?}", petrinet);
     // let net = Petrinet::new(
     //     [
     //         Transition(vec![1], vec![2, 3]),
@@ -136,7 +186,7 @@ fn main() {
 mod tests {
     use super::*;
     #[test]
-    fn example_usage() {
+    fn simple_net() {
         // transition i represented as (i)
         // place j represented as j
         //
@@ -185,5 +235,28 @@ mod tests {
         assert_eq!(e.enabled(2), false, "transition 2 must be disabled");
         assert_eq!(e.enabled(3), false, "transition 3 must be disabled");
         assert_eq!(e.enabled(4), false, "transition 4 must be disabled");
+    }
+
+    #[test]
+    fn deserialize_convert() {
+        let nbpt = read_deserialize_file("./swap-protocol-both.nbpt.json")
+            .expect("File should be converted manually to nbpt.json format using stbx");
+        let petrinet = Petrinet::from(nbpt.partition);
+        let expected = Petrinet(vec![
+            Transition(vec![2, 15], vec![3, 16]),
+            Transition(vec![1, 6], vec![2, 11]),
+            Transition(vec![2, 4], vec![19]),
+            Transition(vec![7], vec![4, 5]),
+            Transition(vec![5], vec![6]),
+            Transition(vec![8, 9], vec![7]),
+            Transition(vec![10], vec![8, 9]),
+            Transition(vec![19], vec![3]),
+            Transition(vec![19], vec![1, 18]),
+            Transition(vec![13, 11], vec![12, 14]),
+            Transition(vec![14], vec![15]),
+            Transition(vec![12, 16], vec![17]),
+            Transition(vec![12, 18], vec![13]),
+        ]);
+        assert_eq!(petrinet, expected, "the two petrinets should be identical")
     }
 }

@@ -5,3 +5,6 @@ authors = [""]
 edition = "2018"
 
 [dependencies]
+serde = ""
+serde_json = ""
+serde_derive = ""
