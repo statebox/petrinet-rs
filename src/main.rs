@@ -3,7 +3,7 @@ extern crate serde_derive;
 
 use std::iter;
 
-type Places = Vec<u32>;
+type Places = Vec<usize>;
 
 #[derive(Debug, PartialEq, PartialOrd)]
 struct Transition(Places, Places);
@@ -22,7 +22,7 @@ impl<'a> From<&'a Petrinet> for Execution<'a> {
         let p = net.place_count();
         let marking: Vec<bool> = Some(true)
             .into_iter()
-            .chain(iter::repeat(false).take(p as usize - 1))
+            .chain(iter::repeat(false).take(p - 1))
             .collect();
         Execution(net, marking)
     }
@@ -37,7 +37,7 @@ impl<'a> Execution<'a> {
         match net.transition(t) {
             None => false,
             Some(tr) => tr.consume().iter().all(|&place| {
-                let pp = place as usize - 1;
+                let pp = place - 1;
                 match marking.get(pp) {
                     None => false,
                     Some(&marked) => marked,
@@ -57,7 +57,7 @@ impl<'a> Execution<'a> {
                     .iter()
                     .enumerate()
                     .map(|(pos, &has_token)| {
-                        let place_ix = &(pos as u32 + 1);
+                        let place_ix = &(pos + 1);
                         let is_consumed = cs.contains(place_ix);
                         let is_produced = ps.contains(place_ix);
                         let yes_token = true; // net is 1-safe, so place either has or doesn't have a token
@@ -84,7 +84,7 @@ impl Petrinet {
     fn new(x: Vec<Transition>) -> Self {
         Petrinet(x)
     }
-    fn place_count(&self) -> u32 {
+    fn place_count(&self) -> usize {
         self.transitions()
             .iter()
             .fold(0, |acc, Transition(consumed, produced)| {
@@ -107,7 +107,7 @@ impl Petrinet {
     }
 }
 
-fn max(xs: &Places) -> &u32 {
+fn max(xs: &Places) -> &usize {
     xs.iter().fold(&0, |acc, x| acc.max(x))
 }
 
@@ -127,7 +127,7 @@ struct Nbpt {
 // partitions are separated by zeros and alternate between consume and produce
 // respectively. each produce-consume pair constitutes one transition
 #[derive(Serialize, Deserialize, Debug)]
-struct Partition(Vec<u32>);
+struct Partition(Vec<usize>);
 
 impl From<Partition> for Petrinet {
     fn from(partition: Partition) -> Self {
