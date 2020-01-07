@@ -1,13 +1,15 @@
 use std::iter;
 
-#[derive(Clone, Debug, Default)]
-struct Transition(Vec<u32>, Vec<u32>);
+type Places = Vec<u32>;
+
+#[derive(Debug)]
+struct Transition(Places, Places);
 
 impl Transition {
-    fn consume(&self) -> &Vec<u32> {
+    fn consume(&self) -> &Places {
         &self.0
     }
-    fn produce(&self) -> &Vec<u32> {
+    fn produce(&self) -> &Places {
         &self.1
     }
 }
@@ -15,16 +17,15 @@ impl Transition {
 impl<'a> From<&'a Petrinet> for Execution<'a> {
     fn from(net: &'a Petrinet) -> Self {
         let p = net.place_count();
-        let marking: Vec<bool> = [true]
-            .iter()
-            .cloned()
-            .chain(iter::repeat(false).take((p - 1) as usize))
+        let marking: Vec<bool> = Some(true)
+            .into_iter()
+            .chain(iter::repeat(false).take(p as usize - 1))
             .collect();
         Execution(net, marking)
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 struct Execution<'a>(&'a Petrinet, Vec<bool>);
 
 impl<'a> Execution<'a> {
@@ -33,10 +34,10 @@ impl<'a> Execution<'a> {
         match net.transition(t) {
             None => false,
             Some(tr) => tr.consume().iter().all(|&place| {
-                let pp: usize = (place as usize) - 1;
-                match marking.get(pp).cloned() {
+                let pp = place as usize - 1;
+                match marking.get(pp) {
                     None => false,
-                    Some(marked) => marked,
+                    Some(&marked) => marked,
                 }
             }),
         }
@@ -59,10 +60,10 @@ impl<'a> Execution<'a> {
                         let yes_token = true; // net is 1-safe, so place either has or doesn't have a token
                         let no_token = false;
                         match (is_consumed, is_produced) {
-                            (true, true) => yes_token,    // both produce and consumed, so there is a token afterwards
-                            (true, false) => no_token,    // just consumed, so there is _no_ token afterwards
-                            (false, true) => yes_token,   // only produced, so there is a token afterwards
-                            (false, false) => has_token,  // not modified by this transition
+                            (true, true) => yes_token, // both produce and consumed, so there is a token afterwards
+                            (true, false) => no_token, // just consumed, so there is _no_ token afterwards
+                            (false, true) => yes_token, // only produced, so there is a token afterwards
+                            (false, false) => has_token, // not modified by this transition
                         }
                     })
                     .collect();
@@ -74,21 +75,20 @@ impl<'a> Execution<'a> {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug)]
 struct Petrinet(Vec<Transition>);
 impl Petrinet {
     fn new(x: Vec<Transition>) -> Self {
         Petrinet(x)
     }
     fn place_count(&self) -> u32 {
-        self.0
+        self.transitions()
             .iter()
-            .cloned()
             .fold(0, |acc, Transition(consumed, produced)| {
                 let pmax = max(&produced);
                 let cmax = max(&consumed);
                 let m = pmax.max(cmax);
-                acc.max(m.clone()).max(1) // require at least one place (which will hold the initial token)
+                acc.max(*m).max(1) // require at least one place (which will hold the initial token)
             })
     }
     fn transitions(&self) -> &Vec<Transition> {
@@ -100,11 +100,11 @@ impl Petrinet {
 
     /// nr of transitions
     fn transition_count(&self) -> usize {
-        self.0.len()
+        self.transitions().len()
     }
 }
 
-fn max(xs: &Vec<u32>) -> &u32 {
+fn max(xs: &Places) -> &u32 {
     xs.iter().fold(&0, |acc, x| acc.max(x))
 }
 
@@ -145,15 +145,12 @@ mod tests {
         //  start -> 1 -(0)   (3)- 6
         //              \  (2)  /
         //                3 - 5
-        let net = Petrinet::new(
-            [
-                Transition(vec![1], vec![2, 3]),
-                Transition(vec![2], vec![4]),
-                Transition(vec![3], vec![5]),
-                Transition(vec![4, 5], vec![6]),
-            ]
-            .to_vec(),
-        );
+        let net = Petrinet::new(vec![
+            Transition(vec![1], vec![2, 3]),
+            Transition(vec![2], vec![4]),
+            Transition(vec![3], vec![5]),
+            Transition(vec![4, 5], vec![6]),
+        ]);
         let e = Execution::from(&net);
         assert_eq!(e.enabled(0), true, "transition 0 must be enabled");
         assert_eq!(e.enabled(1), false, "transition 1 must be disabled");
@@ -168,7 +165,6 @@ mod tests {
         assert_eq!(e.enabled(3), false, "transition 3 must be disabled");
         assert_eq!(e.enabled(4), false, "transition 4 must be disabled");
 
-
         let e = e.fire(2);
         assert_eq!(e.enabled(0), false, "transition 0 must be disabled");
         assert_eq!(e.enabled(1), true, "transition 1 must be enabled");
@@ -176,14 +172,12 @@ mod tests {
         assert_eq!(e.enabled(3), false, "transition 3 must be disabled");
         assert_eq!(e.enabled(4), false, "transition 4 must be disabled");
 
-
         let e = e.fire(1);
         assert_eq!(e.enabled(0), false, "transition 0 must be disabled");
         assert_eq!(e.enabled(1), false, "transition 1 must be disabled");
         assert_eq!(e.enabled(2), false, "transition 2 must be disabled");
         assert_eq!(e.enabled(3), true, "transition 3 must be enabled");
         assert_eq!(e.enabled(4), false, "transition 4 must be disabled");
-
 
         let e = e.fire(3);
         assert_eq!(e.enabled(0), false, "transition 0 must be disabled");
