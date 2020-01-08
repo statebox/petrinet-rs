@@ -111,26 +111,118 @@ fn max(xs: &Places) -> &usize {
     xs.iter().fold(&0, |acc, x| acc.max(x))
 }
 
-fn read_deserialize_file(filepath: &str) -> Result<Nbpt, std::io::Error> {
-    // TODO: fix error types, not sure how it compiles as there seem to be 2 distinct errrors
-    let f = std::fs::File::open(filepath)?;
-    let deserialized: Nbpt = serde_json::from_reader(f)?;
-    Ok(deserialized)
-}
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct Nbpt {
     name: String,
     names: Vec<String>, // name of transitions
     partition: Partition,
 }
 
-// partitions are separated by zeros and alternate between consume and produce
-// respectively. each produce-consume pair constitutes one transition
-#[derive(Serialize, Deserialize, Debug)]
-struct Partition(Vec<usize>);
+impl Nbpt {
+    fn from_file(filepath: &str) -> Result<Nbpt, std::io::Error> {
+        // TODO: fix error types, not sure how it compiles as there seem to be 2 distinct errrors
+        let f = std::fs::File::open(filepath)?;
+        let deserialized: Nbpt = serde_json::from_reader(f)?;
+        Ok(deserialized)
+    }
+    fn partition(self) -> Partition {
+        self.partition
+    }
+}
 
-impl From<Partition> for Petrinet {
-    fn from(partition: Partition) -> Self {
+fn write_trait(nbpt: Nbpt, trait_file: &str) -> Result<(), std::io::Error> {
+    let valid_partition = ValidPartition::new(nbpt.clone().partition()).unwrap();
+    let net = Petrinet::from(valid_partition);
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    let mut f = OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(trait_file)
+        .unwrap();
+    {
+        writeln!(f, "// Auto-generated file using petrinet-rs").unwrap();
+        let Partition(mut xs) = nbpt.partition;
+        xs.sort_unstable();
+        xs.dedup();
+        let type_params = xs.into_iter().enumerate().fold("".to_owned(), |mut acc, (i, x)| {
+            if i > 0 { acc.push_str(","); }
+            acc.push_str("T");
+            acc.push_str(&(x.to_string()));
+            acc
+        });
+        let mut name = nbpt.name;
+        name.retain(|c| !c.is_whitespace());
+        writeln!(f, "trait {}<{}> {{ ", name, type_params).unwrap();
+    }
+    {
+        for (name, trs) in nbpt.names.iter().zip(net.transitions().iter()) {
+            let Transition(consume, produce) = trs;
+            let c = consume.iter().enumerate().fold("".to_owned(), |mut acc, (i, x)| {
+                if i > 0 { acc.push_str(", "); }
+                acc.push_str("p");
+                acc.push_str(&(i.to_string()));
+                acc.push_str(": T");
+                acc.push_str(&(x.to_string()));
+                acc
+            });
+
+            let t = produce.iter().enumerate().fold("".to_owned(), |mut acc, (i, x)| {
+                if i > 0 { acc.push_str(", "); }
+                acc.push_str("T");
+                acc.push_str(&(x.to_string()));
+                acc
+            });
+            writeln!(f, "  fn {}({}) -> ({})", name, c, t).unwrap();
+        }
+    }
+    writeln!(f, "}}", ).unwrap();
+    Ok(())
+}
+// Partitions are separated by zeros and alternate between consume and produce
+// respectively. Each produce-consume pair constitutes one transition
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct Partition(Vec<usize>);
+impl Partition {
+    // Partition values should start at 1 and increament in +1 steps; zeros are
+    // the separators
+    fn is_valid(partition: Partition) -> bool {
+        let Partition(mut xs) = partition;
+        xs.sort_unstable();
+        xs.dedup();
+        let xs: Vec<_> = xs.into_iter().skip_while(|&y| y == 0).collect();
+        for (ix, x) in xs.iter().enumerate() {
+            if ix < 1 {
+                // must start at 1
+                if *x != 1 as usize {
+                    return false;
+                }
+            } else {
+                let diff = x - xs[ix - 1];
+                // difference between sorted subsequent items must be 1
+                // println!("{:?}, {:?}", x, xs[ix - 1]);
+                if diff > 1 {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+}
+struct ValidPartition(Vec<usize>);
+impl ValidPartition {
+    fn new(partition: Partition) -> Result<Self, &'static str> {
+        // TODO: create Error type
+        match Partition::is_valid(partition.clone()) {
+            true => Ok(ValidPartition(partition.0)),
+            false => Err("Partition values should start at 1 and increament in +1 steps; zeros are the separators")
+        }
+    }
+}
+
+impl From<ValidPartition> for Petrinet {
+    fn from(partition: ValidPartition) -> Self {
         let mut consume = true;
         let mut c: Places = vec![];
         let mut p: Places = vec![];
@@ -155,31 +247,7 @@ impl From<Partition> for Petrinet {
 }
 
 fn main() {
-    // let nbpt = read_deserialize_file("./swap-protocol-both.nbpt.json").unwrap();
-    // // println!("nbpt: {:?}", nbpt);
-    // let petrinet = Petrinet::from(nbpt.partition);
-    // println!("{:?}", petrinet);
-    // let net = Petrinet::new(
-    //     [
-    //         Transition(vec![1], vec![2, 3]),
-    //         Transition(vec![2], vec![4]),
-    //         Transition(vec![3], vec![5]),
-    //         Transition(vec![4, 5], vec![6]),
-    //     ]
-    //     .to_vec(),
-    // );
-    // let e = Execution::from(net);
-    // // println!("transition 0 is enabled = {}", e.enabled(0));
-    // // println!("transition 1 is enabled = {}", e.enabled(1));
-    // // println!("transition 1 is enabled = {}", e.enabled(2));
-    // // println!("transition 1 is enabled = {}", e.enabled(3));
 
-    // let e1 = e.fire(0);
-    // // println!("transition 0 is enabled = {}", e1.enabled(0));
-    // // println!("transition 1 is enabled = {}", e1.enabled(1));
-    // // println!("transition 1 is enabled = {}", e1.enabled(2));
-    // // println!("transition 1 is enabled = {}", e1.enabled(3));
-    // // engine(net);
 }
 
 #[cfg(test)]
@@ -239,9 +307,10 @@ mod tests {
 
     #[test]
     fn deserialize_convert() {
-        let nbpt = read_deserialize_file("./swap-protocol-both.nbpt.json")
+        let nbpt = Nbpt::from_file("./swap-protocol-both.nbpt.json")
             .expect("File should be converted manually to nbpt.json format using stbx");
-        let petrinet = Petrinet::from(nbpt.partition);
+        let valid_partition = ValidPartition::new(nbpt.clone().partition()).unwrap();
+        let petrinet = Petrinet::from(valid_partition);
         let expected = Petrinet(vec![
             Transition(vec![2, 15], vec![3, 16]),
             Transition(vec![1, 6], vec![2, 11]),
@@ -257,6 +326,10 @@ mod tests {
             Transition(vec![12, 16], vec![17]),
             Transition(vec![12, 18], vec![13]),
         ]);
-        assert_eq!(petrinet, expected, "the two petrinets should be identical")
+        assert_eq!(petrinet, expected, "the two petrinets should be identical");
+        write_trait(nbpt, "protocol.rs").unwrap();
+
+
+
     }
 }
