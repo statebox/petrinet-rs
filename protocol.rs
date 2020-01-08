@@ -1,5 +1,5 @@
 // Auto-generated file using petrinet-rs
-trait BothParties<T0,T1,T2,T3,T4,T5,T6,T7,T8,T9,T10,T11,T12,T13,T14,T15,T16,T17,T18,T19> { 
+trait BothParties<T1,T2,T3,T4,T5,T6,T7,T8,T9,T10,T11,T12,T13,T14,T15,T16,T17,T18,T19> { 
   fn buy_SWAPLOCK(p0: T2, p1: T15) -> (T3, T16);
   fn publish_SWAPLOCK(p0: T1, p1: T6) -> (T2, T11);
   fn refund_SWAPLOCK(p0: T2, p1: T4) -> (T19);

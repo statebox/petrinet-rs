@@ -131,10 +131,10 @@ impl Nbpt {
 }
 
 fn write_trait(nbpt: Nbpt, trait_file: &str) -> Result<(), std::io::Error> {
-    let valid_partition = ValidPartition::new(nbpt.clone().partition()).unwrap();
-    let net = Petrinet::from(valid_partition);
     use std::fs::OpenOptions;
     use std::io::Write;
+    let valid_partition = ValidPartition::new(nbpt.clone().partition()).unwrap();
+    let net = Petrinet::from(valid_partition);
     let mut f = OpenOptions::new()
         .create(true)
         .truncate(true)
@@ -143,9 +143,7 @@ fn write_trait(nbpt: Nbpt, trait_file: &str) -> Result<(), std::io::Error> {
         .unwrap();
     {
         writeln!(f, "// Auto-generated file using petrinet-rs").unwrap();
-        let Partition(mut xs) = nbpt.partition;
-        xs.sort_unstable();
-        xs.dedup();
+        let xs = nbpt.partition.unique_sorted_places();
         let type_params = xs.into_iter().enumerate().fold("".to_owned(), |mut acc, (i, x)| {
             if i > 0 { acc.push_str(","); }
             acc.push_str("T");
@@ -188,10 +186,7 @@ impl Partition {
     // Partition values should start at 1 and increament in +1 steps; zeros are
     // the separators
     fn is_valid(partition: Partition) -> bool {
-        let Partition(mut xs) = partition;
-        xs.sort_unstable();
-        xs.dedup();
-        let xs: Vec<_> = xs.into_iter().skip_while(|&y| y == 0).collect();
+        let xs = partition.unique_sorted_places();
         for (ix, x) in xs.iter().enumerate() {
             if ix < 1 {
                 // must start at 1
@@ -208,6 +203,12 @@ impl Partition {
             }
         }
         true
+    }
+    fn unique_sorted_places(self) -> Places {
+        let Partition(mut xs) = self;
+        xs.sort_unstable();
+        xs.dedup();
+        xs.into_iter().skip_while(|&y| y == 0).collect()
     }
 }
 struct ValidPartition(Vec<usize>);
