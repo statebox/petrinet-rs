@@ -174,7 +174,7 @@ fn write_trait(nbpt: Nbpt, trait_file: &str) -> Result<(), std::io::Error> {
                 acc.push_str(&(x.to_string()));
                 acc
             });
-            writeln!(f, "  fn {}({}) -> ({})", name, c, t).unwrap();
+            writeln!(f, "  fn {}({}) -> ({});", name, c, t).unwrap();
         }
     }
     writeln!(f, "}}", ).unwrap();
