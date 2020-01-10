@@ -133,7 +133,13 @@ impl Nbpt {
 fn write_trait(nbpt: Nbpt, trait_file: &str) -> Result<(), std::io::Error> {
     use std::fs::OpenOptions;
     use std::io::Write;
-    let valid_partition = ValidPartition::new(nbpt.clone().partition()).unwrap();
+    let Nbpt {
+        name,
+        names,
+        partition,
+    } = nbpt;
+    let mut trait_name = name;
+    let valid_partition = ValidPartition::new(partition.clone()).unwrap();
     let net = Petrinet::from(valid_partition);
     let mut f = OpenOptions::new()
         .create(true)
@@ -141,43 +147,73 @@ fn write_trait(nbpt: Nbpt, trait_file: &str) -> Result<(), std::io::Error> {
         .write(true)
         .open(trait_file)
         .unwrap();
-    {
-        writeln!(f, "// Auto-generated file using petrinet-rs").unwrap();
-        let xs = nbpt.partition.unique_sorted_places();
-        let type_params = xs.into_iter().enumerate().fold("".to_owned(), |mut acc, (i, x)| {
-            if i > 0 { acc.push_str(","); }
-            acc.push_str("T");
-            acc.push_str(&(x.to_string()));
-            acc
-        });
-        let mut name = nbpt.name;
-        name.retain(|c| !c.is_whitespace());
-        writeln!(f, "trait {}<{}> {{ ", name, type_params).unwrap();
-    }
-    {
-        for (name, trs) in nbpt.names.iter().zip(net.transitions().iter()) {
-            let Transition(consume, produce) = trs;
-            let c = consume.iter().enumerate().fold("".to_owned(), |mut acc, (i, x)| {
-                if i > 0 { acc.push_str(", "); }
-                acc.push_str("p");
-                acc.push_str(&(i.to_string()));
-                acc.push_str(": T");
-                acc.push_str(&(x.to_string()));
-                acc
+    writeln!(f, "// Auto-generated file using petrinet-rs")?;
+    let unique_places = partition.unique_sorted_places();
+    // the trait type params comma delimited
+    let trait_type_params =
+        unique_places
+            .iter()
+            .enumerate()
+            .fold("".to_owned(), |mut acc, (i, place)| {
+                if i > 0 {
+                    acc.push_str(",");
+                }
+                format!("{}T{:02}", acc, place)
+            });
+    trait_name.retain(|c| !c.is_whitespace());
+    writeln!(f, "trait {}<{}> {{", trait_name, trait_type_params)?;
+    let mut fns = "".to_owned();
+
+    for (fn_name, trs) in names.iter().zip(net.transitions().iter()) {
+        let Transition(consume, produce) = trs;
+        let ins = consume
+            .iter()
+            .enumerate()
+            .fold("".to_owned(), |mut acc, (i, place)| {
+                if i > 0 {
+                    acc.push_str(", ");
+                }
+                acc.push_str("a");
+                format!("{}{:02}: T{:02}", acc, i, place)
             });
 
-            let t = produce.iter().enumerate().fold("".to_owned(), |mut acc, (i, x)| {
-                if i > 0 { acc.push_str(", "); }
-                acc.push_str("T");
-                acc.push_str(&(x.to_string()));
-                acc
+        let outs = produce
+            .iter()
+            .enumerate()
+            .fold("".to_owned(), |mut acc, (i, place)| {
+                if i > 0 {
+                    acc.push_str(", ");
+                }
+                format!("{}T{:02}", acc, place)
             });
-            writeln!(f, "  fn {}({}) -> ({});", name, c, t).unwrap();
-        }
+        let formated = format!("  fn {}({}) -> ({});", fn_name, ins, outs);
+        writeln!(f, "{}", formated)?;
+        fns.push_str(formated.as_str());
+        fns.push_str("\n");
     }
-    writeln!(f, "}}", ).unwrap();
+    writeln!(f, "}}\n")?;
+    let types = trait_type_params.split(",");
+    let target_type = "BagOfFuns";
+    let (in_type_params, fns) = types.fold(("".to_owned(), fns), |(acc_in, acc_fns), t| {
+        writeln!(f, "#[derive(Default)]").unwrap();
+        writeln!(f, "struct A{};", t).unwrap();
+        let old = format!("{}", t);
+        let new = format!("A{}", t);
+        let acc_in = format!("{}A{},", acc_in, t);
+        let acc_fns = acc_fns.replace(&old, &new);
+        (acc_in, acc_fns)
+    });
+    writeln!(f, "\nstruct {};", target_type)?;
+    writeln!(f, "\nimpl {}<{}> for {} {{", trait_name, in_type_params, target_type)?;
+    let old = ";";
+    let new = format!(" {{\n    Default::default()\n  }}");
+    let fns = fns.replace(&old, &new);
+    writeln!(f, "{}", fns)?;
+    writeln!(f, "}}")?;
+
     Ok(())
 }
+
 // Partitions are separated by zeros and alternate between consume and produce
 // respectively. Each produce-consume pair constitutes one transition
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -247,9 +283,7 @@ impl From<ValidPartition> for Petrinet {
     }
 }
 
-fn main() {
-
-}
+fn main() {}
 
 #[cfg(test)]
 mod tests {
@@ -327,10 +361,7 @@ mod tests {
             Transition(vec![12, 16], vec![17]),
             Transition(vec![12, 18], vec![13]),
         ]);
-        assert_eq!(petrinet, expected, "the two petrinets should be identical");
-        write_trait(nbpt, "protocol.rs").unwrap();
-
-
-
+        assert_eq!(petrinet, expected, "The two petrinets must be identical");
+        write_trait(nbpt, "./src/protocol.rs").unwrap();
     }
 }
