@@ -83,7 +83,15 @@ mod create_and_execute_net {
         let e = e.fire(2);
         assert_eq!(e.enabled(0), false, "transition 0 must be disabled");
         assert_eq!(e.enabled(1), true, "transition 1 must be enabled");
-        assert_eq!(e.enabled(2), false, "transition 2 must be enabled");
+        assert_eq!(e.enabled(2), false, "transition 2 must be disabled");
+        assert_eq!(e.enabled(3), false, "transition 3 must be disabled");
+        assert_eq!(e.enabled(4), false, "transition 4 must be disabled");
+
+        // can't fire transition without all its inputs activated
+        let e = e.fire(3);
+        assert_eq!(e.enabled(0), false, "transition 0 must be disabled");
+        assert_eq!(e.enabled(1), true, "transition 1 must be enabled");
+        assert_eq!(e.enabled(2), false, "transition 2 must be disabled");
         assert_eq!(e.enabled(3), false, "transition 3 must be disabled");
         assert_eq!(e.enabled(4), false, "transition 4 must be disabled");
 
