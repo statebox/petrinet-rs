@@ -29,10 +29,11 @@ impl<'a> Execution<'a> {
         }
     }
     pub fn fire(self, t: usize) -> Self {
-        let Execution(net, marking) = self;
-        match net.transition(t) {
-            None => Execution(net, marking),
-            Some(tr) => {
+        match self.enabled(t) {
+            false => self,
+            true => {
+                let Execution(net, marking) = self;
+                let tr = net.transition(t).expect("already know transition is enabled and therefore exists");
                 let cs = tr.consume();
                 let ps = tr.produce();
 
